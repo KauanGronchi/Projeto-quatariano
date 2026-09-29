@@ -1,0 +1,278 @@
+/* --- BASE DE DADOS SIMULADA (MOCK BACKEND & API REST) --- */
+class BackendAPI {
+    constructor() {
+        // Inicializa postos de saúde no banco local
+        this.healthUnits = [
+            { id: 1, name: "CAPS II - Centro de Atenção Psicossocial", address: "Rua das Flores, 123 - Centro", phone: "(11) 4002-8922", type: "CAPS" },
+            { id: 2, name: "UBS Maria das Dores - Unidade Básica", address: "Av. Brasil, 450 - Jd. América", phone: "(11) 3301-5544", type: "UBS" },
+            { id: 3, name: "Clínica-Escola de Psicologia UNIESP", address: "Rua Universitária, 80 - Bloco B", phone: "(11) 2109-9000", type: "Escola" }
+        ];
+
+        // Mensagens iniciais do mural
+        this.wallMessages = JSON.parse(localStorage.getItem('wall_messages')) || [
+            { id: 1, text: "Você é mais forte do que pensa. Um dia de cada vez!", likes: 14, time: "Há 2 horas" },
+            { id: 2, text: "Não tenha vergonha de chorar ou pedir ajuda. Falar cura!", likes: 29, time: "Há 5 horas" },
+            { id: 3, text: "A tempestade vai passar. Respire fundo e continue caminhando.", likes: 8, time: "Ontem" }
+        ];
+    }
+
+    // Método de busca de postos
+    async getUnitsByCep(cep) {
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                resolve(this.healthUnits);
+            }, 400); // Simula atraso de rede
+        });
+    }
+
+    // Método para salvar nova mensagem
+    async postWallMessage(text) {
+        return new Promise((resolve) => {
+            const newMessage = {
+                id: Date.now(),
+                text: text,
+                likes: 0,
+                time: "Agora mesmo"
+            };
+            this.wallMessages.unshift(newMessage);
+            localStorage.setItem('wall_messages', JSON.stringify(this.wallMessages));
+            setTimeout(() => resolve(newMessage), 300);
+        });
+    }
+
+    // Método para curtir mensagem
+    async likeMessage(id) {
+        const msg = this.wallMessages.find(m => m.id === id);
+        if (msg) {
+            msg.likes++;
+            localStorage.setItem('wall_messages', JSON.stringify(this.wallMessages));
+        }
+        return msg;
+    }
+}
+
+const api = new BackendAPI();
+
+/* --- RENDERIZADORES E CONTROLADORES DA INTERFACE --- */
+
+// Rolagem Suave para Seções
+function scrollToSection(id) {
+    document.getElementById(id).scrollIntoView({ behavior: 'smooth' });
+}
+
+// Alternador de Abas (Sinais de Alerta)
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+    event.currentTarget.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+}
+
+// Accordion (Mitos e Verdades)
+function toggleAccordion(header) {
+    const item = header.parentElement;
+    item.classList.toggle('active');
+    const icon = header.querySelector('span');
+    icon.textContent = item.classList.contains('active') ? '-' : '+';
+}
+
+// Simulador de Chat do CVV
+function toggleChatSimulator() {
+    const chat = document.getElementById('chatSimulator');
+    chat.style.display = chat.style.display === 'none' ? 'block' : 'none';
+}
+
+function handleChatKey(event) {
+    if (event.key === 'Enter') sendChatMessage();
+}
+
+function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const container = document.getElementById('chatMessages');
+    const text = input.value.trim();
+
+    if (!text) return;
+
+    // Mensagem do Usuário
+    const userMsg = document.createElement('div');
+    userMsg.className = 'message msg-user';
+    userMsg.textContent = text;
+    container.appendChild(userMsg);
+    input.value = '';
+    container.scrollTop = container.scrollHeight;
+
+    // Resposta Automática Simulada (Voluntário)
+    setTimeout(() => {
+        const botMsg = document.createElement('div');
+        botMsg.className = 'message msg-bot';
+        botMsg.textContent = "Obrigado por compartilhar. Lembre-se que este é um espaço seguro. O que mais tem pesado no seu coração?";
+        container.appendChild(botMsg);
+        container.scrollTop = container.scrollHeight;
+    }, 1200);
+}
+
+// Exercício de Respiração Guiada (4-4-4)
+let breathingInterval = null;
+let isBreathing = false;
+
+function toggleBreathing() {
+    const btn = document.getElementById('breathBtn');
+    const circle = document.getElementById('breathCircle');
+    const text = document.getElementById('breathText');
+
+    if (isBreathing) {
+        clearInterval(breathingInterval);
+        circle.className = 'breathing-circle';
+        text.textContent = "Pronto?";
+        btn.textContent = "Iniciar Respiração (4-4-4)";
+        btn.style.backgroundColor = 'var(--primary)';
+        isBreathing = false;
+        return;
+    }
+
+    isBreathing = true;
+    btn.textContent = "Parar Exercício";
+    btn.style.backgroundColor = 'var(--emergency)';
+
+    function cycle() {
+        // Inspire (4s)
+        text.textContent = "Inspire...";
+        circle.className = 'breathing-circle inhale';
+
+        setTimeout(() => {
+            if (!isBreathing) return;
+            // Segure (4s)
+            text.textContent = "Segure o ar...";
+            circle.className = 'breathing-circle inhale hold';
+
+            setTimeout(() => {
+                if (!isBreathing) return;
+                // Expire (4s)
+                text.textContent = "Expire devagar...";
+                circle.className = 'breathing-circle';
+            }, 4000);
+        }, 4000);
+    }
+
+    cycle();
+    breathingInterval = setInterval(cycle, 12000);
+}
+
+// Busca de Unidades de Saúde
+async function searchHealthUnits() {
+    const input = document.getElementById('cepInput').value;
+    const list = document.getElementById('unitsList');
+
+    if (!input) {
+        alert("Por favor, digite um CEP ou Cidade.");
+        return;
+    }
+
+    list.innerHTML = "<p style='font-size:0.85rem;'>Buscando unidades públicas próximas...</p>";
+    const units = await api.getUnitsByCep(input);
+
+    list.innerHTML = "";
+    units.forEach(unit => {
+        const div = document.createElement('div');
+        div.className = 'unit-item';
+        div.innerHTML = `
+            <h5>${unit.name}</h5>
+            <p>📍 ${unit.address}</p>
+            <p>📞 ${unit.phone}</p>
+        `;
+        list.appendChild(div);
+    });
+}
+
+// Renderização do Mural de Mensagens
+function renderWall() {
+    const grid = document.getElementById('wallGrid');
+    grid.innerHTML = "";
+
+    api.wallMessages.forEach(msg => {
+        const card = document.createElement('div');
+        card.className = 'wall-card';
+        card.innerHTML = `
+            <p>"${msg.text}"</p>
+            <div class="wall-card-footer">
+                <span>Anônimo • ${msg.time}</span>
+                <button class="like-btn" onclick="likeWallMsg(${msg.id})">
+                    💛 <span>${msg.likes}</span> Acolher
+                </button>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+async function publishWallMessage() {
+    const input = document.getElementById('wallMessageInput');
+    const text = input.value.trim();
+
+    if (!text) {
+        alert("Escreva uma mensagem antes de publicar.");
+        return;
+    }
+
+    await api.postWallMessage(text);
+    input.value = "";
+    renderWall();
+}
+
+async function likeWallMsg(id) {
+    await api.likeMessage(id);
+    renderWall();
+}
+
+// Modal de Pré-visualização de Materiais
+function openPreviewModal(title) {
+    const modal = document.getElementById('materialModal');
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('modalContent').innerHTML = `
+        <div style="text-align: center; padding: 20px;">
+            <div style="font-size: 4rem; margin-bottom: 12px;">📄</div>
+            <h4>Pré-visualização do Material</h4>
+            <p style="color: var(--text-muted); font-size:0.9rem; margin-top:8px;">
+                Este é um modelo de alta qualidade preparado para impressão e compartilhamento digital da campanha de valorização da vida.
+            </p>
+        </div>
+    `;
+    modal.classList.add('active');
+}
+
+function closeMaterialModal() {
+    document.getElementById('materialModal').classList.remove('active');
+}
+
+function downloadMaterial(event, filename) {
+    event.preventDefault();
+    alert(`O download do arquivo "${filename}" iniciaria agora em um ambiente de produção real.`);
+}
+
+/* --- INICIALIZAÇÃO AO CARREGAR A PÁGINA --- */
+document.addEventListener('DOMContentLoaded', () => {
+    // Carrega busca padrão e mensagens do mural
+    searchHealthUnits();
+    renderWall();
+
+    // Destaque do Link Ativo da Navegação no Scroll
+    window.addEventListener('scroll', () => {
+        let current = '';
+        const sections = document.querySelectorAll('section');
+
+        sections.forEach(section => {
+            const sectionTop = section.offsetTop;
+            if (pageYOffset >= sectionTop - 150) {
+                current = section.getAttribute('id');
+            }
+        });
+
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.classList.remove('active');
+            if (link.getAttribute('href') === `#${current}`) {
+                link.classList.add('active');
+            }
+        });
+    });
+});
