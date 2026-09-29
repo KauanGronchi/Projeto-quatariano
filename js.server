@@ -1,0 +1,126 @@
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const { GoogleGenAI } = require('@google/genai');
+require('dotenv').config();
+
+const app = express();
+
+// Middlewares de Segurança
+app.use(helmet());
+app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+app.use(express.json());
+
+// Limite de Requisições (Rate Limit) para evitar ataques e abuso de consumo da API
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 30, // Limite de 30 requisições por IP
+    message: { error: "Muitas requisições enviadas. Aguarde alguns minutos ou ligue 188 para atendimento imediato." }
+});
+
+app.use('/api/', apiLimiter);
+
+// Inicializa a API de IA com a chave de ambiente
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// =========================================================================
+// ROTA 1: CHAT DE ATENDIMENTO E TRIAGEM DE CRISE
+// =========================================================================
+app.post('/api/chat', async (req, res) => {
+    try {
+        const { userMessage } = req.body;
+
+        if (!userMessage || userMessage.trim().length === 0) {
+            return res.status(400).json({ error: "Mensagem inválida." });
+        }
+
+        const systemInstruction = `
+            Você é o assistente virtual da plataforma Acolher & Ouvir.
+            Avalie a mensagem do usuário e responda OBRIGATORIAMENTE em formato JSON com o seguinte formato:
+            {
+              "isCrisis": boolean,
+              "reply": "string com a resposta empática"
+            }
+        `;
+
+        const aiResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+            config: {
+                systemInstruction: systemInstruction,
+                responseMimeType: "application/json"
+            }
+        });
+
+        const result = JSON.parse(aiResponse.text);
+
+        // Se a IA detectar risco de crise alta
+        if (result.isCrisis) {
+            return res.json({
+                emergencyAlert: true,
+                phone: "188",
+                message: "Identificamos que você pode estar passando por um momento de extrema dor. Por favor, busque ajuda imediata e gratuita no CVV pelo telefone 188 ou pelo SAMU no 192."
+            });
+        }
+
+        // Se for atendimento padrão
+        return res.json({
+            emergencyAlert: false,
+            message: result.reply
+        });
+
+    } catch (error) {
+        console.error("Erro na integração com IA:", error);
+        return res.status(500).json({
+            emergencyAlert: true,
+            phone: "188",
+            message: "Houve uma falha na conexão. Se precisar de apoio imediato, entre em contato com o CVV pelo número 188."
+        });
+    }
+});
+
+// =========================================================================
+// ROTA 2: MODERAÇÃO DO MURAL DA COMUNIDADE
+// =========================================================================
+app.post('/api/mural/moderate', async (req, res) => {
+    try {
+        const { messageText } = req.body;
+
+        const systemInstruction = `
+            Você é um moderador de conteúdo de saúde mental.
+            Analise o texto abaixo para publicação em um mural público de acolhimento.
+            Bloqueie (approved: false) se o texto contiver:
+            - Julgamentos ("isso é frescura", "falta de fé")
+            - Gatilhos de automutilação explicita
+            - Palavrões, ofensas ou discurso de ódio
+            - Dados pessoais (telefones, CPFs, links de redes sociais)
+
+            Responda OBRIGATORIAMENTE em JSON:
+            {
+              "approved": boolean,
+              "reason": "motivo em caso de reprovação"
+            }
+        `;
+
+        const aiResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{ role: 'user', parts: [{ text: messageText }] }],
+            config: {
+                systemInstruction: systemInstruction,
+                responseMimeType: "application/json"
+            }
+        });
+
+        const result = JSON.parse(aiResponse.text);
+        return res.json(result);
+
+    } catch (error) {
+        console.error("Erro na moderação:", error);
+        // Em caso de falha na IA, a mensagem fica pendente para moderação manual
+        return res.status(500).json({ approved: false, reason: "Aprovação pendente." });
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
